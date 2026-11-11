@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using ExileCore;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.MemoryObjects;
@@ -124,7 +125,8 @@ public sealed class GemLevelling : BaseSettingsPlugin<GemLevellingSettings>
 
     /// <summary>
     /// Clicks the first gem that can level up and waits until the game shows the result: the gem's level rose or its
-    /// entry left the panel, for <see cref="ConfirmTicks"/> ticks in a row. The timeout is only a safety bound.
+    /// entry left the panel, for <see cref="ConfirmTicks"/> ticks in a row. The timeout is only a safety bound. It then
+    /// waits InputHumanizer's humanized delay, so that delay lies between two clicks.
     /// </summary>
     private async SyncTask<bool> LevelNextGemAsync()
     {
@@ -143,7 +145,7 @@ public sealed class GemLevelling : BaseSettingsPlugin<GemLevellingSettings>
             var gemAddress = gemEntity.Address;
             var levelBefore = skillGem.Level;
 
-            if (!await input.ClickAsync(gem.LevelUpButton.GetClientRectCache, cancellationToken))
+            if (await input.ClickAsync(gem.LevelUpButton.GetClientRectCache, cancellationToken) is not { } delayBeforeNextClick)
             {
                 return false;
             }
@@ -156,8 +158,10 @@ public sealed class GemLevelling : BaseSettingsPlugin<GemLevellingSettings>
                 return confirmedTicks >= ConfirmTicks;
             }
 
-            return await TaskUtils.CheckEveryFrame(() => cancellationToken.IsCancellationRequested || IsLevelled(), LevelUpTimeout) &&
-                   !cancellationToken.IsCancellationRequested;
+            var isLevelled = await TaskUtils.CheckEveryFrame(() => cancellationToken.IsCancellationRequested || IsLevelled(), LevelUpTimeout);
+            await Task.Delay(delayBeforeNextClick, cancellationToken);
+
+            return isLevelled;
         }
         catch (OperationCanceledException)
         {

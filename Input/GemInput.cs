@@ -11,8 +11,8 @@ using RectangleF = ExileCore.Shared.Drawing.RectangleF;
 namespace GemLevelling.Input;
 
 /// <summary>
-/// Clicks a gem's level up button through InputHumanizer, which is the only way this plugin sends input. The delays
-/// around the click and the cursor movement are InputHumanizer's own.
+/// Clicks a gem's level up button through InputHumanizer, which is the only way this plugin sends input. The click is
+/// instant, and the delay between two clicks is InputHumanizer's own.
 /// </summary>
 internal sealed class GemInput(GameController gameController)
 {
@@ -20,32 +20,40 @@ internal sealed class GemInput(GameController gameController)
     private const string TryGetInputControllerMethod = "InputHumanizer.TryGetInputController";
     private const float ClickAreaInset = 0.25f;
     private const float CursorMovedTolerance = 4f;
+    private const int ImmediateMoveDistance = 1;
+    private const int ImmediateMoveDelay = 0;
 
     public bool IsInputHumanizerLoaded => TryGetControllerMethod() is not null;
 
     /// <summary>
-    /// Takes InputHumanizer's input lock, clicks a random point inside <paramref name="clientRect"/>, moves the cursor
-    /// back when the click moved it, and gives the lock back. Returns false when InputHumanizer is not loaded, is busy
-    /// with another plugin or could not click.
+    /// Takes InputHumanizer's input lock, clicks a random point inside <paramref name="clientRect"/> at once, puts the
+    /// cursor back when the click moved it, and gives the lock back. Returns the humanized delay to wait before the
+    /// next click, or <see langword="null"/> when InputHumanizer is not loaded, is busy with another plugin or could
+    /// not click.
     /// </summary>
-    public async SyncTask<bool> ClickAsync(RectangleF clientRect, CancellationToken cancellationToken)
+    public async SyncTask<TimeSpan?> ClickAsync(RectangleF clientRect, CancellationToken cancellationToken)
     {
         if (TryGetControllerMethod()?.Invoke(RequesterName) is not { } controller)
         {
-            return false;
+            return null;
         }
 
         using (controller)
         {
             var cursorBefore = ExileInput.MousePositionNum;
-            var isClicked = await controller.Click(MouseButtons.Left, ToScreen(RandomPointWithin(clientRect)), cancellationToken);
+
+            if (!await controller.InstantClick(MouseButtons.Left, ToScreen(RandomPointWithin(clientRect)), cancellationToken))
+            {
+                return null;
+            }
 
             if (Vector2.Distance(ExileInput.MousePositionNum, cursorBefore) > CursorMovedTolerance)
             {
-                await controller.MoveMouse(ToScreen(cursorBefore), cancellationToken);
+                await controller.MoveMouse(ToScreen(cursorBefore), ImmediateMoveDistance, ImmediateMoveDelay, ImmediateMoveDelay,
+                    cancellationToken);
             }
 
-            return isClicked;
+            return TimeSpan.FromMilliseconds(controller.GenerateDelay());
         }
     }
 
