@@ -337,3 +337,6 @@ MigrationBackup/
 
 # Fody
 FodyWeavers.xsd
+
+# ExileAPI Compile Errors
+Errors.txt
